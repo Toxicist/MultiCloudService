@@ -74,6 +74,7 @@ class ParamActor(nn.Module):
         self.squashing_function = squashing_function
         self.activation = activation
         if init_type == "normal":
+
             assert init_std is not None and init_std > 0
         assert self.squashing_function is False  # unsupported, cannot get scaling right yet
 
