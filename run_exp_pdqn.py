@@ -11,7 +11,6 @@ import numpy as np
 
 from common.wrappers import ScaledStateWrapper, ScaledParameterisedActionWrapper
 
-from multi_cloud_service_env import MCSEnv
 
 def pad_action(act, act_param):
     params = [np.zeros((1,), dtype=np.float32), np.zeros((1,), dtype=np.float32), np.zeros((1,), dtype=np.float32)]
@@ -94,7 +93,8 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
         vidir = os.path.join(save_dir, "frames")
         os.makedirs(vidir, exist_ok=True)
 
-    env = MCSEnv()
+    # env = MCSEnv()
+    env = gym.make('Cloud-v0')
     initial_params_ = [0.5, 0.5]
     if scale_actions:
         for a in range(env.action_space.spaces[0].n):
@@ -102,7 +102,7 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
                         env.action_space.spaces[1].spaces[a].high - env.action_space.spaces[1].spaces[a].low) - 1.
 
     # env = ScaledStateWrapper(env) # 状态空间转换为-1~1
-    # env = PlatformFlattenedActionWrapper(env) # 扁平化动作空间
+    env = PlatformFlattenedActionWrapper(env) # 扁平化动作空间
     if scale_actions: # 转换动作空间为-1~1
         env = ScaledParameterisedActionWrapper(env)
 
@@ -168,7 +168,7 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
     for i in range(episodes):
         if save_freq > 0 and save_dir and i % save_freq == 0:
             agent.save_models(os.path.join(save_dir, str(i)))
-        state, _ = env.reset()
+        state = env.reset()
         state = np.array(state, dtype=np.float32, copy=False)
         if visualise and i % render_freq == 0:
             env.render()

@@ -11,6 +11,8 @@ TOTAL_TASK_NUM = 3
 
 
 class MCSEnv(gym.Env):
+    metadata = {'render.modes': ['human']}
+
     def __init__(self, seed=0, edge_capacity=600,
                  task_size_mean=10, task_size_std=3,
                  task_length_mean=5, task_length_std=2,
@@ -58,12 +60,16 @@ class MCSEnv(gym.Env):
 
         self.action_space = spaces.Tuple((
             spaces.Discrete(num_actions),
-            spaces.Box(0.0, 1.0, dtype=np.float32),
-            spaces.Box(0.0, 1.0, dtype=np.float32)
+            # spaces.Box(0.0, 1.0, shape=(2, ), dtype=np.float32)
+            spaces.Tuple(
+                tuple(spaces.Box(low=np.array([0]), high=np.array([1]), dtype=np.float32)
+                      for i in range(num_actions))
+            )
         ))
-
+        # Observation Space的结构问题，有可能还需要改动
         self.observation_space = spaces.Tuple((
-            spaces.Box(low=0., shape=(6,), dtype=np.float32)
+            spaces.Box(low=0., high=1., shape=(6,), dtype=np.float32),
+            # spaces.Discrete(2),  # reserved服务器订购状态
         ))
 
         self.window = None
@@ -151,7 +157,7 @@ class MCSEnv(gym.Env):
         remain_capacity = remain_capacity - edge_vm
         edge_workload = 1 - remain_capacity / self.edge_capacity
         edge_cost_coefficient = EDGE_COEFFICIENT * (1 + edge_workload) * EDGE_BASIC_COST
-        edge_cost = np.round(edge_cost_coefficient * (self.edge_capacity - remain_capacity), 4) # 边缘节点的成本计算
+        edge_cost = np.round(edge_cost_coefficient * (self.edge_capacity - remain_capacity), 4)  # 边缘节点的成本计算
 
         # 计算系统的总成本
         cost = edge_cost + cloud_cost
@@ -175,7 +181,8 @@ class MCSEnv(gym.Env):
             task_info = self.task_generator()
             cloud_price = self.cloud_service_price_generator()
 
-            self.state = [remain_capacity, released_vm, task_info[0], task_info[1], cloud_price, 1 if self.service_re1_is_available else 0]
+            self.state = [remain_capacity, released_vm, task_info[0], task_info[1], cloud_price,
+                          1 if self.service_re1_is_available else 0]
 
         next_state = copy.deepcopy(self.state)
 
@@ -246,5 +253,3 @@ if __name__ == '__main__':
                 ep_num += 1
                 env.reset()
                 break
-
-

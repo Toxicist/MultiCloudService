@@ -173,7 +173,7 @@ class PDQNAgent(Agent):
                  random_weighted=False,
                  device="cuda" if torch.cuda.is_available() else "cpu",
                  seed=None):
-        # super(PDQNAgent, self).__init__(observation_space, action_space)
+        super(PDQNAgent, self).__init__(observation_space, action_space)
         self.device = torch.device(device)
         self.num_actions = self.action_space.spaces[0].n
         self.action_parameter_sizes = np.array([self.action_space.spaces[i].shape[0] for i in range(1,self.num_actions+1)])
