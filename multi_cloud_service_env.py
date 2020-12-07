@@ -1,12 +1,16 @@
 import numpy as np
 import copy
+import gym
+import os
+from gym import error, spaces, utils
+from gym.utils import seeding
 
 EDGE_BASIC_COST = 1.0
 EDGE_COEFFICIENT = 1
 TOTAL_TASK_NUM = 3
 
 
-class MCSEnv(object):
+class MCSEnv(gym.Env):
     def __init__(self, seed=0, edge_capacity=600,
                  task_size_mean=10, task_size_std=3,
                  task_length_mean=5, task_length_std=2,
@@ -50,8 +54,19 @@ class MCSEnv(object):
         # self.service_re2_upfront = service_re2_upfront
         # self.service_re2_remain_time = 0
 
-        self.discrete_action_space = 2
-        self.action_param_space = 2
+        num_actions = 2
+
+        self.action_space = spaces.Tuple((
+            spaces.Discrete(num_actions),
+            spaces.Box(0.0, 1.0, dtype=np.float32),
+            spaces.Box(0.0, 1.0, dtype=np.float32)
+        ))
+
+        self.observation_space = spaces.Tuple((
+            spaces.Box(low=0., shape=(6,), dtype=np.float32)
+        ))
+
+        self.window = None
 
     def reset(self):
         np.random.seed(self.seed)
@@ -209,7 +224,7 @@ class MCSEnv(object):
 
 
 if __name__ == '__main__':
-    env = MCSEnv()
+    env = MCSEnv(seed=122)
     done = False
     ep_r = 0
     ep_num = 0

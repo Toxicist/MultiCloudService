@@ -11,6 +11,7 @@ import numpy as np
 
 from common.wrappers import ScaledStateWrapper, ScaledParameterisedActionWrapper
 
+from multi_cloud_service_env import MCSEnv
 
 def pad_action(act, act_param):
     params = [np.zeros((1,), dtype=np.float32), np.zeros((1,), dtype=np.float32), np.zeros((1,), dtype=np.float32)]
@@ -58,7 +59,7 @@ def evaluate(env, agent, episodes=1000):
 @click.option('--tau-actor-param', default=0.001, help='Soft target network update averaging factor.', type=float)  # 0.001
 @click.option('--learning-rate-actor', default=0.001, help="Actor network learning rate.", type=float) # 0.001/0.0001 learns faster but tableaus faster too
 @click.option('--learning-rate-actor-param', default=0.0001, help="Critic network learning rate.", type=float)  # 0.00001
-@click.option('--scale-actions', default=True, help="Scale actions.", type=bool)
+@click.option('--scale-actions', default=False, help="Scale actions.", type=bool)
 @click.option('--initialise-params', default=True, help='Initialise action parameters.', type=bool)
 @click.option('--clip-grad', default=10., help="Parameter gradient clipping limit.", type=float)
 @click.option('--split', default=False, help='Separate action-parameter inputs.', type=bool)
@@ -93,22 +94,21 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
         vidir = os.path.join(save_dir, "frames")
         os.makedirs(vidir, exist_ok=True)
 
-    env = gym.make('Platform-v0')
-    initial_params_ = [3., 10., 400.]
+    env = MCSEnv()
+    initial_params_ = [0.5, 0.5]
     if scale_actions:
-        # 将参数进行区间映射
         for a in range(env.action_space.spaces[0].n):
             initial_params_[a] = 2. * (initial_params_[a] - env.action_space.spaces[1].spaces[a].low) / (
                         env.action_space.spaces[1].spaces[a].high - env.action_space.spaces[1].spaces[a].low) - 1.
 
-    env = ScaledStateWrapper(env) # 状态空间映射为-1~1
-    env = PlatformFlattenedActionWrapper(env) # flatten动作空间
-    if scale_actions: # 动作空间映射到-1~1
+    # env = ScaledStateWrapper(env) # 状态空间转换为-1~1
+    # env = PlatformFlattenedActionWrapper(env) # 扁平化动作空间
+    if scale_actions: # 转换动作空间为-1~1
         env = ScaledParameterisedActionWrapper(env)
 
-    dir = os.path.join(save_dir,title)
-    env = Monitor(env, directory=os.path.join(dir,str(seed)), video_callable=False, write_upon_reset=False, force=True)
-    env.seed(seed)
+    # dir = os.path.join(save_dir,title)
+    # env = Monitor(env, directory=os.path.join(dir,str(seed)), video_callable=False, write_upon_reset=False, force=True)
+    # env.seed(seed)
     np.random.seed(seed)
 
     print(env.observation_space)
