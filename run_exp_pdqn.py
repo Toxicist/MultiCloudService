@@ -48,7 +48,7 @@ def evaluate(env, agent, episodes=1000):
 @click.option('--inverting-gradients', default=True,
               help='Use inverting gradients scheme instead of squashing function.', type=bool)
 @click.option('--initial-memory-threshold', default=500, help='Number of transitions required to start learning.',
-              type=int)  # may have been running with 500??
+              type=int)  # may have been running with 500????????
 @click.option('--use-ornstein-noise', default=True,
               help='Use Ornstein noise instead of epsilon-greedy with uniform random exploration.', type=bool)
 @click.option('--replay-memory-size', default=10000, help='Replay memory size in transitions.', type=int)
@@ -58,7 +58,7 @@ def evaluate(env, agent, episodes=1000):
 @click.option('--tau-actor-param', default=0.001, help='Soft target network update averaging factor.', type=float)  # 0.001
 @click.option('--learning-rate-actor', default=0.001, help="Actor network learning rate.", type=float) # 0.001/0.0001 learns faster but tableaus faster too
 @click.option('--learning-rate-actor-param', default=0.0001, help="Critic network learning rate.", type=float)  # 0.00001
-@click.option('--scale-actions', default=False, help="Scale actions.", type=bool)
+@click.option('--scale-actions', default=True, help="Scale actions.", type=bool)
 @click.option('--initialise-params', default=True, help='Initialise action parameters.', type=bool)
 @click.option('--clip-grad', default=10., help="Parameter gradient clipping limit.", type=float)
 @click.option('--split', default=False, help='Separate action-parameter inputs.', type=bool)
@@ -156,7 +156,7 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
             initial_bias[a] = initial_params_[a]
         agent.set_action_parameter_passthrough_weights(initial_weights, initial_bias)
     print(agent)
-    max_steps = 250
+    max_steps = 200
     total_reward = 0.
     returns = []
     start_time = time.time()
@@ -170,8 +170,6 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
             agent.save_models(os.path.join(save_dir, str(i)))
         state = env.reset()
         state = np.array(state, dtype=np.float32, copy=False)
-        if visualise and i % render_freq == 0:
-            env.render()
 
         act, act_param, all_action_parameters = agent.act(state)
         action = pad_action(act, act_param)
@@ -180,28 +178,24 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
         agent.start_episode()
         for j in range(max_steps):
 
-            ret = env.step(action)
-            (next_state, steps), reward, terminal, _ = ret
-            next_state = np.array(next_state, dtype=np.float32, copy=False)
+            ret = env.step(action) # execute action in environment, and observe next state
+            next_state, reward, terminal = ret # resovle the result
+            next_state = np.array(next_state, dtype=np.float32, copy=False) # convert to nparray
 
-            next_act, next_act_param, next_all_action_parameters = agent.act(next_state)
-            next_action = pad_action(next_act, next_act_param)
-            agent.step(state, (act, all_action_parameters), reward, next_state,
-                       (next_act, next_all_action_parameters), terminal, steps)
-            act, act_param, all_action_parameters = next_act, next_act_param, next_all_action_parameters
+            next_act, next_act_param, next_all_action_parameters = agent.act(next_state)    # choose action according to next state
+            next_action = pad_action(next_act, next_act_param)      # package action and param
+            agent.step(state, (act, all_action_parameters), reward, next_state,     # add sample and learn
+                       (next_act, next_all_action_parameters), terminal, time_steps=1)
+            act, act_param, all_action_parameters = next_act, next_act_param, next_all_action_parameters # transfer state and action
             action = next_action
             state = next_state
 
             episode_reward += reward
-            if visualise and i % render_freq == 0:
-                env.render()
 
             if terminal:
                 break
         agent.end_episode()
 
-        if save_frames and i % render_freq == 0:
-            video_index = env.unwrapped.save_render_states(vidir, title, video_index)
 
         returns.append(episode_reward)
         total_reward += episode_reward

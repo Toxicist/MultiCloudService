@@ -388,6 +388,7 @@ class PDQNAgent(Agent):
 
         return grad
 
+    # time_step为一个step执行的时间，默认传参即可
     def step(self, state, action, reward, next_state, next_action, terminal, time_steps=1):
         act, all_action_parameters = action
         self._step += 1
