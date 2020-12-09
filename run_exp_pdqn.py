@@ -93,7 +93,6 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
         vidir = os.path.join(save_dir, "frames")
         os.makedirs(vidir, exist_ok=True)
 
-    # env = MCSEnv()
     env = gym.make('Cloud-v0')
     initial_params_ = [0.5, 0.5]
     if scale_actions:
@@ -101,7 +100,7 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
             initial_params_[a] = 2. * (initial_params_[a] - env.action_space.spaces[1].spaces[a].low) / (
                         env.action_space.spaces[1].spaces[a].high - env.action_space.spaces[1].spaces[a].low) - 1.
 
-    # env = ScaledStateWrapper(env) # 状态空间转换为-1~1
+    env = ScaledStateWrapper(env) # 状态空间转换为-1~1
     env = PlatformFlattenedActionWrapper(env) # 扁平化动作空间
     if scale_actions: # 转换动作空间为-1~1
         env = ScaledParameterisedActionWrapper(env)
@@ -190,7 +189,7 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
             action = next_action
             state = next_state
 
-            episode_reward += reward
+            episode_reward += reward # calculate the episode reward
 
             if terminal:
                 break

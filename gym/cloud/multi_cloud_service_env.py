@@ -4,20 +4,57 @@ import gym
 import os
 from gym import error, spaces, utils
 from gym.utils import seeding
+'''
+    STATE:
+    1. remain capacity in edge
+    2. released VMs
+    3. task size
+    4. task length
+    5. current cloud service price
+    6. reserve state 0 / 1 
+'''
 
-EDGE_BASIC_COST = 1.0
-EDGE_COEFFICIENT = 1
-TOTAL_TASK_NUM = 3
+class Constants:
+    # 边缘节点参数设置
+    EDGE_BASIC_COST = 1.0
+    EDGE_COEFFICIENT = 1
+    TOTAL_TASK_NUM = 3
 
+    EDGE_CAPACITY = 600
+
+    # 用户任务参数设置
+    TASK_SIZE_MEAN = 10
+    TASK_SIZE_STD = 3
+    MIN_TASK_SIZE = 1
+    MAX_TASK_SIZE = TASK_SIZE_MEAN + 3 * TASK_SIZE_STD
+
+    TASK_LENGTH_MEAN = 5
+    TASK_LENGTH_STD = 2
+    MIN_TASK_LENGTH = 1
+    MAX_TASK_LENGTH = TASK_LENGTH_MEAN + 3 * TASK_LENGTH_STD
+
+    # 云服务价格及类型参数设置
+    SERVICE_OD1_PRICE_MEAN = 5
+    SERVICE_OD1_PRICE_STD = 1
+    MIN_SERVICE_OD1_PRICE = 1e-3
+    MAX_SERVICE_OD1_PRICE = SERVICE_OD1_PRICE_MEAN + 3 * SERVICE_OD1_PRICE_STD
+
+    SERVICE_RE1_UPFRONT = 300
+    SERVICE_RE1_PERIOD = 12
+    SERIVCE_RE1_PRICE = 1.6
+
+    # 设置缩放向量
+    SCALE_VECTOR = np.array([EDGE_CAPACITY, EDGE_CAPACITY, MAX_TASK_SIZE, MAX_TASK_LENGTH, MAX_SERVICE_OD1_PRICE, 1])
 
 class MCSEnv(gym.Env):
-    metadata = {'render.modes': ['human']} 
-    def __init__(self, seed=0, edge_capacity=600,
-                 task_size_mean=10, task_size_std=3,
-                 task_length_mean=5, task_length_std=2,
-                 service_od1_price_mean=5, service_od1_price_std=1,
+    metadata = {'render.modes': ['human']}
+
+    def __init__(self, seed=0, edge_capacity=Constants.EDGE_CAPACITY,
+                 task_size_mean=Constants.TASK_SIZE_MEAN, task_size_std=Constants.TASK_SIZE_STD,
+                 task_length_mean=Constants.TASK_LENGTH_MEAN, task_length_std=Constants.TASK_LENGTH_STD,
+                 service_od1_price_mean=Constants.SERVICE_OD1_PRICE_MEAN, service_od1_price_std=Constants.SERVICE_OD1_PRICE_STD,
                  service_od2_price_mean=5, service_od2_price_std=1,
-                 service_re1_upfront=300, service_re1_period=12, service_re1_price=1.6,
+                 service_re1_upfront=Constants.SERVICE_RE1_UPFRONT, service_re1_period=Constants.SERVICE_RE1_PERIOD, service_re1_price=Constants.SERIVCE_RE1_PRICE,
                  service_re2_upfront=500, service_re2_peroid=30, service_re2_price=1.2
                  ):
         self.seed = seed
@@ -67,11 +104,14 @@ class MCSEnv(gym.Env):
         ))
         # Observation Space的结构是否还需要改动
         self.observation_space = spaces.Tuple((
-            spaces.Box(low=0., high=1., shape=(5, ), dtype=np.float32),
-            spaces.Discrete(2), # reserved服务器订购状态 
+            spaces.Box(low=0., high=1., shape=(6, ), dtype=np.float32),
+            spaces.Discrete(200),
         ))
 
         self.window = None
+
+        self.remain_capacity = self.edge_capacity
+        self.released_vm = 0
 
     def reset(self):
         np.random.seed(self.seed)
@@ -87,22 +127,13 @@ class MCSEnv(gym.Env):
 
         self.done = False
 
-        task_info = self.task_generator()
-        cloud_price = self.cloud_service_price_generator()
+        self.released_vm = 0
 
-        '''
-            STATE:
-            1. remain capacity in edge
-            2. released VMs
-            3. task size
-            4. task length
-            5. current cloud service price
-            6. reserve state 0 / 1 
-        '''
 
-        self.state = [self.remain_capacity, 0, task_info[0], task_info[1], cloud_price, 0]
 
-        return copy.deepcopy(self.state)
+
+        state = self.get_state().copy()
+        return copy.deepcopy(state)
 
     def step(self, action):
         """
@@ -155,7 +186,7 @@ class MCSEnv(gym.Env):
         # 计算边缘节点的工作负载及其工作成本
         remain_capacity = remain_capacity - edge_vm
         edge_workload = 1 - remain_capacity / self.edge_capacity
-        edge_cost_coefficient = EDGE_COEFFICIENT * (1 + edge_workload) * EDGE_BASIC_COST
+        edge_cost_coefficient = Constants.EDGE_COEFFICIENT * (1 + edge_workload) * Constants.EDGE_BASIC_COST
         edge_cost = np.round(edge_cost_coefficient * (self.edge_capacity - remain_capacity), 4) # 边缘节点的成本计算
 
         # 计算系统的总成本
@@ -163,8 +194,8 @@ class MCSEnv(gym.Env):
 
         # 更新系统状态
         self.usage_record.append([edge_vm, task_length])
-        released_vm = self.update_record()
-        remain_capacity += released_vm
+        self.released_vm = self.update_record()
+        remain_capacity += self.released_vm
 
         if self.service_re1_is_available:
             self.service_re1_remain_time -= 1
@@ -173,16 +204,8 @@ class MCSEnv(gym.Env):
             self.service_re1_is_available = False
 
         self.task_counter += 1
-        if self.task_counter == TOTAL_TASK_NUM:
-            self.done = True
-            self.state = [remain_capacity, released_vm, 0, 0, 0, 0]
-        else:
-            task_info = self.task_generator()
-            cloud_price = self.cloud_service_price_generator()
 
-            self.state = [remain_capacity, released_vm, task_info[0], task_info[1], cloud_price, 1 if self.service_re1_is_available else 0]
-
-        next_state = copy.deepcopy(self.state)
+        next_state = self.get_state().copy()
 
         return next_state, -cost, self.done
 
@@ -226,6 +249,26 @@ class MCSEnv(gym.Env):
         all_params = [np.zeros((1,)), np.zeros((1,))]
         all_params[index][:] = param
         return (index, all_params)
+
+    def _scale_state(self, state):
+        scaled_state = state / Constants.SCALE_VECTOR
+        return scaled_state
+
+    def get_state(self):
+
+        if self.task_counter == Constants.TOTAL_TASK_NUM:
+            self.done = True
+            self.state = [self.remain_capacity, self.released_vm, 0, 0, 0, 0]
+        else:
+            task_info = self.task_generator()
+            cloud_price = self.cloud_service_price_generator()
+
+            self.state = [self.remain_capacity, self.released_vm, task_info[0], task_info[1], cloud_price,
+                          1 if self.service_re1_is_available else 0]
+
+        state = self.state.copy()
+        scaled_state = self._scale_state(state)
+        return scaled_state
 
 
 if __name__ == '__main__':
