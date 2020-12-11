@@ -10,7 +10,7 @@ from common.platform_domain import PlatformFlattenedActionWrapper
 import numpy as np
 
 from common.wrappers import ScaledStateWrapper, ScaledParameterisedActionWrapper
-
+from utils import plot_reward, plot_window_reward
 
 def pad_action(act, act_param):
     params = [np.zeros((1,), dtype=np.float32), np.zeros((1,), dtype=np.float32), np.zeros((1,), dtype=np.float32)]
@@ -71,16 +71,17 @@ def evaluate(env, agent, episodes=1000):
 @click.option('--action-input-layer', default=0, help='Which layer to input action parameters.', type=int)
 @click.option('--layers', default='[128,]', help='Duplicate action-parameter inputs.', cls=ClickPythonLiteralOption)
 @click.option('--save-freq', default=0, help='How often to save models (0 = never).', type=int)
-@click.option('--save-dir', default="results/platform", help='Output directory.', type=str)
+@click.option('--save-dir', default="results/exp", help='Output directory.', type=str)
 @click.option('--render-freq', default=100, help='How often to render / save frames of an episode.', type=int)
 @click.option('--save-frames', default=False, help="Save render frames from the environment. Incompatible with visualise.", type=bool)
 @click.option('--visualise', default=False, help="Render game states. Incompatible with save-frames.", type=bool)
 @click.option('--title', default="PDDQN", help="Prefix of output files", type=str)
+@click.option('--window',default=10, help='Window of reward')
 def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradients, initial_memory_threshold,
         replay_memory_size, epsilon_steps, tau_actor, tau_actor_param, use_ornstein_noise, learning_rate_actor,
         learning_rate_actor_param, epsilon_final, zero_index_gradients, initialise_params, scale_actions,
         clip_grad, split, indexed, layers, multipass, weighted, average, random_weighted, render_freq,
-        save_freq, save_dir, save_frames, visualise, action_input_layer, title):
+        save_freq, save_dir, save_frames, visualise, action_input_layer, title, window):
 
     if save_freq > 0 and save_dir:
         save_dir = os.path.join(save_dir, title + "{}".format(str(seed)))
@@ -178,7 +179,7 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
         for j in range(max_steps):
 
             ret = env.step(action) # execute action in environment, and observe next state
-            next_state, reward, terminal = ret # resovle the result
+            next_state, reward, terminal, _ = ret # resovle the result
             next_state = np.array(next_state, dtype=np.float32, copy=False) # convert to nparray
 
             next_act, next_act_param, next_all_action_parameters = agent.act(next_state)    # choose action according to next state
@@ -198,8 +199,9 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
 
         returns.append(episode_reward)
         total_reward += episode_reward
-        if i % 100 == 0:
-            print('{0:5s} R:{1:.4f} r100:{2:.4f}'.format(str(i), total_reward / (i + 1), np.array(returns[-100:]).mean()))
+        print('Episode{0:5s} R:{1:.4f} Avg:{2:.4f} r10:{3:.4f}'.format(str(i), episode_reward, total_reward / (i + 1), np.array(returns[-window:]).mean()))
+        if i % 10  == 0 and i is not 0:
+            plot_reward(returns, './results/imgs/exp.png')
     end_time = time.time()
     print("Took %.2f seconds" % (end_time - start_time))
     env.close()

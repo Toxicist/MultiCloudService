@@ -30,7 +30,7 @@ class ScaledStateWrapper(gym.ObservationWrapper):
                 (gym.spaces.Box(low=-np.ones(self.low.shape), high=np.ones(self.high.shape),
                                 dtype=np.float32),
                  obs.spaces[1]))
-            self.compound = False
+            self.compound = True
         else:
             raise Exception("Unsupported observation space type: %s" % self.observation_space)
 
