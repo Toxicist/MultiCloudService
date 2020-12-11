@@ -43,7 +43,7 @@ def evaluate(env, agent, episodes=1000):
 
 @click.command()
 @click.option('--seed', default=0, help='Random seed.', type=int)
-@click.option('--episodes', default=20000, help='Number of epsiodes.', type=int)
+@click.option('--episodes', default=5000, help='Number of epsiodes.', type=int)
 @click.option('--evaluation-episodes', default=1000, help='Episodes over which to evaluate after training.', type=int)
 @click.option('--batch-size', default=128, help='Minibatch size.', type=int)
 @click.option('--gamma', default=0.95, help='Discount factor.', type=float)
@@ -77,7 +77,7 @@ def evaluate(env, agent, episodes=1000):
 @click.option('--save-dir', default="results/goal", help='Output directory.', type=str)
 @click.option('--render-freq', default=100, help='How often to render / save frames of an episode.', type=int)
 @click.option('--save-frames', default=False, help="Save render frames from the environment. Incompatible with visualise.", type=bool)
-@click.option('--visualise', default=True, help="Render game states. Incompatible with save-frames.", type=bool)
+@click.option('--visualise', default=False, help="Render game states. Incompatible with save-frames.", type=bool)
 @click.option('--title', default="PDQN", help="Prefix of output files", type=str)
 def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradients, initial_memory_threshold,
         replay_memory_size, epsilon_steps, epsilon_final, tau_actor, tau_actor_param, use_ornstein_noise,

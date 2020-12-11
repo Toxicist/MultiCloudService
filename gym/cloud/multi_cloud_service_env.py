@@ -18,13 +18,13 @@ class Constants:
     # 边缘节点参数设置
     EDGE_BASIC_COST = 1.0
     EDGE_COEFFICIENT = 1
-    TOTAL_TASK_NUM = 3
+    TOTAL_TASK_NUM = 100
 
-    EDGE_CAPACITY = 600
+    EDGE_CAPACITY = 60
 
     # 用户任务参数设置
     TASK_SIZE_MEAN = 10
-    TASK_SIZE_STD = 3
+    TASK_SIZE_STD = 5
     MIN_TASK_SIZE = 1
     MAX_TASK_SIZE = TASK_SIZE_MEAN + 3 * TASK_SIZE_STD
 
@@ -42,6 +42,8 @@ class Constants:
     SERVICE_RE1_UPFRONT = 300
     SERVICE_RE1_PERIOD = 12
     SERIVCE_RE1_PRICE = 1.6
+
+    SHOW_STEP = True
 
     # 设置缩放向量
     SCALE_VECTOR = np.array([EDGE_CAPACITY, EDGE_CAPACITY, MAX_TASK_SIZE, MAX_TASK_LENGTH, MAX_SERVICE_OD1_PRICE, 1])
@@ -128,10 +130,6 @@ class MCSEnv(gym.Env):
         self.done = False
 
         self.released_vm = 0
-
-
-
-
         state = self.get_state().copy()
         return copy.deepcopy(state)
 
@@ -145,11 +143,13 @@ class MCSEnv(gym.Env):
         act_index 2 支付云服务器1的upfront价格，无参数
         :return: 执行后的状态，奖励值，停止信号等
         """
+
         cost = 0  # 成本
         edge_cost, cloud_cost = 0, 0
 
         act_index = action[0]  # 动作索引
         act_param = action[1][act_index][0]  # 所选动作参数
+        act_param = np.clip(act_param, 0, 1) # 动作参数裁剪，避免加噪音
 
         # 获取服务器当前的状态
         state = copy.deepcopy(self.state)
@@ -196,6 +196,7 @@ class MCSEnv(gym.Env):
         self.usage_record.append([edge_vm, task_length])
         self.released_vm = self.update_record()
         remain_capacity += self.released_vm
+        self.remain_capacity = remain_capacity
 
         if self.service_re1_is_available:
             self.service_re1_remain_time -= 1
@@ -207,7 +208,14 @@ class MCSEnv(gym.Env):
 
         next_state = self.get_state().copy()
 
-        return next_state, -cost, self.done
+        # Show selected action
+        if Constants.SHOW_STEP:
+            print(f"STEP: {self.task_counter}, TYPE: {act_index}, PARAM: {act_param}, CAP: {self.remain_capacity}, Released: {self.released_vm}, Edge Cost: {edge_cost} \
+            Cloud Cost: {cloud_cost}")
+
+        info = {}
+
+        return next_state, -cost/1000, self.done, info
 
     def update_record(self):
         delete_index = []
@@ -227,7 +235,7 @@ class MCSEnv(gym.Env):
         # 生成任务数据, 四舍五入制
         while True:
             task_size = int(np.around(np.random.normal(self.task_size_mean, self.task_size_std), 1))
-            if task_size >= 1:
+            if task_size >= 1 and task_size <=Constants.MAX_TASK_SIZE:
                 break
 
         while True:
@@ -284,7 +292,7 @@ if __name__ == '__main__':
         while True:
             ep_steps += 1
             action = env.random_action()
-            next_state, reward, done = env.step(action)
+            next_state, reward, done, _ = env.step(action)
             ep_r += reward
             if done:
                 print(f"Episode Num: {ep_num + 1} Episode Steps: {ep_steps} Reward: {ep_r}")
