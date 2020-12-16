@@ -41,12 +41,14 @@ class Constants:
 
     SERVICE_RE1_UPFRONT = 300
     SERVICE_RE1_PERIOD = 12
-    SERIVCE_RE1_PRICE = 1.6
+    SERIVCE_RE1_PRICE = 1.2
 
     SHOW_STEP = True
 
     # 设置缩放向量
     SCALE_VECTOR = np.array([EDGE_CAPACITY, EDGE_CAPACITY, MAX_TASK_SIZE, MAX_TASK_LENGTH, MAX_SERVICE_OD1_PRICE, 1])
+
+    EXCHANGE_RATE = 6.5556
 
 class MCSEnv(gym.Env):
     metadata = {'render.modes': ['human']}
@@ -211,7 +213,7 @@ class MCSEnv(gym.Env):
         # Show selected action
         if Constants.SHOW_STEP:
             print(f"STEP: {self.task_counter}, TYPE: {act_index}, PARAM: {act_param}, CAP: {self.remain_capacity}, Released: {self.released_vm}, Edge Cost: {edge_cost} \
-            Cloud Cost: {cloud_cost}")
+            Cloud Cost: {cloud_cost}, Req: {task_size, task_length}")
 
         info = {}
 
@@ -235,12 +237,12 @@ class MCSEnv(gym.Env):
         # 生成任务数据, 四舍五入制
         while True:
             task_size = int(np.around(np.random.normal(self.task_size_mean, self.task_size_std), 1))
-            if task_size >= 1 and task_size <=Constants.MAX_TASK_SIZE:
+            if task_size >= 1 and task_size <= Constants.MAX_TASK_SIZE:
                 break
 
         while True:
             task_length = int(np.around(np.random.normal(self.task_length_mean, self.task_length_std), 1))
-            if task_length >= 1:
+            if task_length >= 1 and task_length <= Constants.MAX_TASK_LENGTH:
                 break
 
         return [task_size, task_length]
@@ -248,7 +250,7 @@ class MCSEnv(gym.Env):
     def cloud_service_price_generator(self):
         while True:
             price = np.around(np.random.normal(self.service_od1_price_mean, self.service_od1_price_std))
-            if price > 0.0:
+            if price >= Constants.MIN_SERVICE_OD1_PRICE and price <= Constants.MAX_SERVICE_OD1_PRICE:
                 return price
 
     def random_action(self):
