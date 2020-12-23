@@ -38,5 +38,9 @@ def plot_reward(reward, filename):
     plt.savefig(filename)
     plt.close()
 
+def scale_param(old_low, old_high, new_low, new_high, param):
+    res = (new_high - new_low) * (param - old_low) / (old_high - old_low) + new_low
+    return np.round(res, 4)
+
 if __name__ == '__main__':
-    plot_reward(1, 2)
+    print(scale_param(1, 11, -1, 1, 6))

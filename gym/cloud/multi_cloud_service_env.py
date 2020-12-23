@@ -6,53 +6,53 @@ from gym import error, spaces, utils
 from gym.utils import seeding
 '''
     STATE:
-    1. remain capacity in edge
-    2. released VMs
-    3. task size
-    4. task length
-    5. current cloud service price
-    6. reserve state 0 / 1 
+    0. remain capacity in edge
+    1. released VMs
+    2. task size
+    3. task length
+    4. current spot instance service price
+    5. reserve state 0 / 1 
 '''
 
 class Constants:
     # 边缘节点参数设置
-    EDGE_BASIC_COST = 1.0
+    EDGE_BASIC_COST = 0.03
     EDGE_COEFFICIENT = 1
-    TOTAL_TASK_NUM = 100
+    TOTAL_TASK_NUM = 100 #
 
-    EDGE_CAPACITY = 60
+    EDGE_CAPACITY = 50
 
     # 用户任务参数设置
-    TASK_SIZE_MEAN = 10
+    TASK_SIZE_MEAN = 10 #
     TASK_SIZE_STD = 5
     MIN_TASK_SIZE = 1
     MAX_TASK_SIZE = TASK_SIZE_MEAN + 3 * TASK_SIZE_STD
 
-    TASK_LENGTH_MEAN = 5
-    TASK_LENGTH_STD = 2
+    TASK_LENGTH_MEAN = 10  #
+    TASK_LENGTH_STD = 5
     MIN_TASK_LENGTH = 1
     MAX_TASK_LENGTH = TASK_LENGTH_MEAN + 3 * TASK_LENGTH_STD
 
     # 云服务价格及类型参数设置
 
     # On Demand Instance Pricing
-    SERVICE_OD1_PRICE = 6
+    SERVICE_OD1_PRICE = 0.105
 
     # Spot Instance Pricing
-    SERVICE_SI1_PRICE_MEAN = 5
-    SERVICE_SI1_PRICE_STD = 1
-    MIN_SERVICE_SI1_PRICE = 1e-3
+    SERVICE_SI1_PRICE_MEAN = 0.08
+    SERVICE_SI1_PRICE_STD = 0.02
+    MIN_SERVICE_SI1_PRICE = 0.02
     MAX_SERVICE_SI1_PRICE = SERVICE_SI1_PRICE_MEAN + 3 * SERVICE_SI1_PRICE_STD
 
     # Reserved Instance Pricing
-    SERVICE_RE1_UPFRONT = 300
-    SERVICE_RE1_PERIOD = 12
-    SERIVCE_RE1_PRICE = 1.2
+    SERVICE_RE1_UPFRONT = 326.0
+    SERVICE_RE1_PERIOD = 200 #
+    SERIVCE_RE1_PRICE = 0.025
 
     SHOW_STEP = True
 
     # 设置缩放向量
-    SCALE_VECTOR = np.array([EDGE_CAPACITY, EDGE_CAPACITY, MAX_TASK_SIZE, MAX_TASK_LENGTH, MAX_SERVICE_OD1_PRICE, 1])
+    SCALE_VECTOR = np.array([EDGE_CAPACITY, EDGE_CAPACITY, MAX_TASK_SIZE, MAX_TASK_LENGTH, MAX_SERVICE_SI1_PRICE, 1])
 
     EXCHANGE_RATE = 6.5556
 
@@ -140,9 +140,9 @@ class MCSEnv(gym.Env):
         :param action:
         action = (act_index, [param1, param2])
         两个部分 一部分是选择的动作的编号， act , 另外一部分是动作的参数列表，未选择的动作使用0填充
-        act_index 0 租赁云服务器0上的资源进行分配，参数值代表分配到云服务器0上的资源，剩余资源由边缘节点提供
-        act_index 1 租赁云服务器1上的资源进行分配，参数值代表分配到云服务器1上的资源，剩余资源由边缘节点提供
-        act_index 2 支付云服务器1的upfront价格，无参数
+        act_index 0 租赁云服务器0-on demand上的资源进行分配，参数值代表分配到云服务器0上的资源，剩余资源由边缘节点提供
+        act_index 1 租赁云服务器1-reserved类型上的资源进行分配，参数值代表分配到云服务器1上的资源，剩余资源由边缘节点提供
+        act_index 2 租赁云服务器2-spot-instance 类型上的资源进行分配，参数值代表分配到服务器2上的资源，剩余资源由边缘节点提供
         :return: 执行后的状态，奖励值，停止信号等
         """
 
@@ -158,7 +158,7 @@ class MCSEnv(gym.Env):
         remain_capacity = state[0]
         task_size = state[2]
         task_length = state[3]
-        cloud_price = state[4]
+        spot_price = state[4]
 
         # 根据动作计算需要租赁的云服务器和边缘节点VM数量
         cloud_vm = int(np.floor(task_size * act_param))
@@ -169,12 +169,12 @@ class MCSEnv(gym.Env):
             cloud_vm = task_size - remain_capacity
             edge_vm = remain_capacity
 
-        # 选择租赁 按需类型云服务器0
+        # 选择租赁 on demand类型云服务器
         if act_index == 0:
             # 计算需要的成本
-            cloud_cost = cloud_price * cloud_vm * task_length  # 云服务器最终成本
+            cloud_cost = self.service_od1_price * cloud_vm * task_length  # 云服务器最终成本
 
-        # 选择租赁 预付费类型云服务器1
+        # 选择租赁 reserves类型云服务器
         elif act_index == 1:
             # 检测服务是否可用
             if not self.service_re1_is_available:
@@ -184,6 +184,10 @@ class MCSEnv(gym.Env):
 
             # 计算需要的成本
             cloud_cost += self.service_re1_price * cloud_vm * task_length
+
+        # 选择租赁 spot instance 类型云服务器
+        elif act_index == 2:
+            cloud_cost = spot_price * cloud_vm * task_length
 
         # 计算边缘节点的工作负载及其工作成本
         remain_capacity = remain_capacity - edge_vm
@@ -212,8 +216,7 @@ class MCSEnv(gym.Env):
 
         # Show selected action
         if Constants.SHOW_STEP:
-            print(f"STEP: {self.task_counter}, TYPE: {act_index}, PARAM: {act_param}, CAP: {self.remain_capacity}, Released: {self.released_vm}, Edge Cost: {edge_cost} \
-            Cloud Cost: {cloud_cost}, Req: {task_size, task_length}")
+            print(f"STEP: {self.task_counter}, TYPE: {act_index}, PARAM: {act_param}, CAP: {self.remain_capacity}, Released: {self.released_vm}, Edge Cost: {edge_cost} Cloud Cost: {cloud_cost}, Req: {task_size, task_length}")
 
         info = {}
 
@@ -249,14 +252,14 @@ class MCSEnv(gym.Env):
 
     def cloud_service_price_generator(self):
         while True:
-            price = np.around(np.random.normal(self.service_od1_price_mean, self.service_od1_price_std))
-            if price >= Constants.MIN_SERVICE_OD1_PRICE and price <= Constants.MAX_SERVICE_OD1_PRICE:
+            price = np.around(np.random.normal(self.service_si1_price_mean, self.service_si1_price_std), 4)
+            if price >= Constants.MIN_SERVICE_SI1_PRICE and price <= Constants.MAX_SERVICE_SI1_PRICE:
                 return price
 
     def random_action(self):
-        index = int(np.random.choice(2, 1))
+        index = int(np.random.choice(3, 1))
         param = np.round(np.random.rand(), 4)
-        all_params = [np.zeros((1,)), np.zeros((1,))]
+        all_params = [np.zeros((1,)), np.zeros((1,)), np.zeros((1,))]
         all_params[index][:] = param
         return (index, all_params)
 
@@ -265,7 +268,6 @@ class MCSEnv(gym.Env):
         return scaled_state
 
     def get_state(self):
-
         if self.task_counter == Constants.TOTAL_TASK_NUM:
             self.done = True
             self.state = [self.remain_capacity, self.released_vm, 0, 0, 0, 0]
@@ -290,7 +292,7 @@ if __name__ == '__main__':
     env.reset()
 
     # for episode in range(10):
-    for t in range(100):
+    for t in range(1):
         while True:
             ep_steps += 1
             action = env.random_action()

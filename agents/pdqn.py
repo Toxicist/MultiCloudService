@@ -12,7 +12,6 @@ from agents.memory.memory import Memory
 from agents.utils import soft_update_target_network, hard_update_target_network
 from agents.utils.noise import OrnsteinUhlenbeckActionNoise
 
-
 class QActor(nn.Module):
 
     def __init__(self, state_size, action_size, action_parameter_size, hidden_layers=(100,), action_input_layer=0,
@@ -172,7 +171,8 @@ class PDQNAgent(Agent):
                  average=False,
                  random_weighted=False,
                  device="cuda" if torch.cuda.is_available() else "cpu",
-                 seed=None):
+                 seed=None,
+                 spot_bound=0.2):
         super(PDQNAgent, self).__init__(observation_space, action_space)
         self.device = torch.device(device)
         self.num_actions = self.action_space.spaces[0].n
@@ -219,6 +219,8 @@ class PDQNAgent(Agent):
         self.np_random = None
         self.seed = seed
         self._seed(seed)
+
+        self.spot_bound = spot_bound
 
         self.use_ornstein_noise = use_ornstein_noise
         self.noise = OrnsteinUhlenbeckActionNoise(self.action_parameter_size, random_machine=self.np_random, mu=0., theta=0.15, sigma=0.0001) #, theta=0.01, sigma=0.01)
@@ -322,14 +324,20 @@ class PDQNAgent(Agent):
             # Hausknecht and Stone [2016] use epsilon greedy actions with uniform random action-parameter exploration
             rnd = self.np_random.uniform()
             if rnd < self.epsilon:
-                action = self.np_random.choice(self.num_actions)
+                if state[3] > self.spot_bound:
+                    action = self.np_random.choice(self.num_actions - 1)
+                else:
+                    action = self.np_random.choice(self.num_actions)
                 if not self.use_ornstein_noise:
                     all_action_parameters = torch.from_numpy(np.random.uniform(self.action_parameter_min_numpy,
                                                               self.action_parameter_max_numpy))
             else:
-                # select avaliable action@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+                # select action from available actions set
                 Q_a = self.actor.forward(state.unsqueeze(0), all_action_parameters.unsqueeze(0))
                 Q_a = Q_a.detach().cpu().data.numpy()
+
+                if state[3] > self.spot_bound:
+                    Q_a = Q_a[:, :2]
                 action = np.argmax(Q_a)
 
             # add noise only to parameters of chosen action

@@ -10,7 +10,7 @@ from common.platform_domain import PlatformFlattenedActionWrapper
 import numpy as np
 
 from common.wrappers import ScaledStateWrapper, ScaledParameterisedActionWrapper
-from utils import plot_reward, plot_window_reward
+from utils import plot_reward, plot_window_reward, scale_param
 
 def pad_action(act, act_param):
     params = [np.zeros((1,), dtype=np.float32), np.zeros((1,), dtype=np.float32), np.zeros((1,), dtype=np.float32)]
@@ -95,7 +95,7 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
         os.makedirs(vidir, exist_ok=True)
 
     env = gym.make('Cloud-v0')
-    initial_params_ = [0.5, 0.5]
+    initial_params_ = [0.5, 0.5, 0.5]
     if scale_actions:
         for a in range(env.action_space.spaces[0].n):
             initial_params_[a] = 2. * (initial_params_[a] - env.action_space.spaces[1].spaces[a].low) / (
@@ -110,6 +110,7 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
     # env = Monitor(env, directory=os.path.join(dir,str(seed)), video_callable=False, write_upon_reset=False, force=True)
     # env.seed(seed)
     np.random.seed(seed)
+
 
     print(env.observation_space)
 
@@ -147,7 +148,8 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
                                            'squashing_function': False,
                                            'output_layer_init_std': 0.0001,},
                        zero_index_gradients=zero_index_gradients,
-                       seed=seed)
+                       seed=seed,
+                       spot_bound=0)
 
     if initialise_params:
         initial_weights = np.zeros((env.action_space.spaces[0].n, env.observation_space.spaces[0].shape[0]))
@@ -156,7 +158,7 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
             initial_bias[a] = initial_params_[a]
         agent.set_action_parameter_passthrough_weights(initial_weights, initial_bias)
     print(agent)
-    max_steps = 200
+    max_steps = 5000
     total_reward = 0.
     returns = []
     start_time = time.time()
@@ -179,7 +181,7 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
         for j in range(max_steps):
 
             ret = env.step(action) # execute action in environment, and observe next state
-            next_state, reward, terminal, _ = ret # resovle the result
+            next_state, reward, terminal, _ = ret # obtain result
             next_state = np.array(next_state, dtype=np.float32, copy=False) # convert to nparray
 
             next_act, next_act_param, next_all_action_parameters = agent.act(next_state)    # choose action according to next state
@@ -200,7 +202,7 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
         returns.append(episode_reward)
         total_reward += episode_reward
         print('Episode{0:5s} R:{1:.4f} Avg:{2:.4f} r10:{3:.4f}'.format(str(i), episode_reward, total_reward / (i + 1), np.array(returns[-window:]).mean()))
-        if i % 10  == 0 and i is not 0:
+        if i % 10 == 0 and i is not 0:
             plot_reward(returns, './results/imgs/exp.png')
     end_time = time.time()
     print("Took %.2f seconds" % (end_time - start_time))
