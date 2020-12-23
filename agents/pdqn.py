@@ -327,7 +327,7 @@ class PDQNAgent(Agent):
                     all_action_parameters = torch.from_numpy(np.random.uniform(self.action_parameter_min_numpy,
                                                               self.action_parameter_max_numpy))
             else:
-                # select maximum action
+                # select avaliable action@@@@@@@@@@@@@@@@@@@@@@@@@@@@
                 Q_a = self.actor.forward(state.unsqueeze(0), all_action_parameters.unsqueeze(0))
                 Q_a = Q_a.detach().cpu().data.numpy()
                 action = np.argmax(Q_a)
