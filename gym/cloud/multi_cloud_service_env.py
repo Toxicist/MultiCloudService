@@ -34,11 +34,17 @@ class Constants:
     MAX_TASK_LENGTH = TASK_LENGTH_MEAN + 3 * TASK_LENGTH_STD
 
     # 云服务价格及类型参数设置
-    SERVICE_OD1_PRICE_MEAN = 5
-    SERVICE_OD1_PRICE_STD = 1
-    MIN_SERVICE_OD1_PRICE = 1e-3
-    MAX_SERVICE_OD1_PRICE = SERVICE_OD1_PRICE_MEAN + 3 * SERVICE_OD1_PRICE_STD
 
+    # On Demand Instance Pricing
+    SERVICE_OD1_PRICE = 6
+
+    # Spot Instance Pricing
+    SERVICE_SI1_PRICE_MEAN = 5
+    SERVICE_SI1_PRICE_STD = 1
+    MIN_SERVICE_SI1_PRICE = 1e-3
+    MAX_SERVICE_SI1_PRICE = SERVICE_SI1_PRICE_MEAN + 3 * SERVICE_SI1_PRICE_STD
+
+    # Reserved Instance Pricing
     SERVICE_RE1_UPFRONT = 300
     SERVICE_RE1_PERIOD = 12
     SERIVCE_RE1_PRICE = 1.2
@@ -56,10 +62,9 @@ class MCSEnv(gym.Env):
     def __init__(self, seed=0, edge_capacity=Constants.EDGE_CAPACITY,
                  task_size_mean=Constants.TASK_SIZE_MEAN, task_size_std=Constants.TASK_SIZE_STD,
                  task_length_mean=Constants.TASK_LENGTH_MEAN, task_length_std=Constants.TASK_LENGTH_STD,
-                 service_od1_price_mean=Constants.SERVICE_OD1_PRICE_MEAN, service_od1_price_std=Constants.SERVICE_OD1_PRICE_STD,
-                 service_od2_price_mean=5, service_od2_price_std=1,
+                 service_si1_price_mean=Constants.SERVICE_SI1_PRICE_MEAN, service_si1_price_std=Constants.SERVICE_SI1_PRICE_STD,
                  service_re1_upfront=Constants.SERVICE_RE1_UPFRONT, service_re1_period=Constants.SERVICE_RE1_PERIOD, service_re1_price=Constants.SERIVCE_RE1_PRICE,
-                 service_re2_upfront=500, service_re2_peroid=30, service_re2_price=1.2
+                 service_od1_price=Constants.SERVICE_OD1_PRICE
                  ):
         self.seed = seed
         np.random.seed(self.seed)
@@ -80,10 +85,7 @@ class MCSEnv(gym.Env):
 
         self.usage_record = []  # 边缘节点的使用记录
 
-        self.service_od1_price_std = service_od1_price_std
-        self.service_od1_price_mean = service_od1_price_mean
-        # self.service_od2_price_std = service_od2_price_std
-        # self.service_od2_price_mean = service_od2_price_mean
+        self.service_od1_price = service_od1_price
 
         self.service_re1_price = service_re1_price  # 预付费类型1 云服务单价
         self.service_re1_period = service_re1_period  # 预付费资源周期
@@ -91,12 +93,10 @@ class MCSEnv(gym.Env):
         self.service_re1_remain_time = 0  # 预付费类型1剩余时间
         self.service_re1_is_available = False  # 预付费类型1 是否可用
 
-        # self.service_re2_price = service_re2_price
-        # self.service_re2_peroid = service_re2_peroid
-        # self.service_re2_upfront = service_re2_upfront
-        # self.service_re2_remain_time = 0
+        self.service_si1_price_mean = service_si1_price_mean
+        self.service_si1_price_std = service_si1_price_std
 
-        num_actions = 2
+        num_actions = 3
 
         self.action_space = spaces.Tuple((
             spaces.Discrete(num_actions),
