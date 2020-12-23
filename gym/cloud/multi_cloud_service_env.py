@@ -49,7 +49,7 @@ class Constants:
     SERVICE_RE1_PERIOD = 200 #
     SERIVCE_RE1_PRICE = 0.025
 
-    SHOW_STEP = True
+    SHOW_STEP = False
 
     # 设置缩放向量
     SCALE_VECTOR = np.array([EDGE_CAPACITY, EDGE_CAPACITY, MAX_TASK_SIZE, MAX_TASK_LENGTH, MAX_SERVICE_SI1_PRICE, 1])
@@ -220,7 +220,7 @@ class MCSEnv(gym.Env):
 
         info = {}
 
-        return next_state, -cost/1000, self.done, info
+        return next_state, -cost/100, self.done, info
 
     def update_record(self):
         delete_index = []
