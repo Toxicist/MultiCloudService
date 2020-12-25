@@ -39,28 +39,32 @@ def evaluate(env, agent, episodes=1000):
     return np.array(returns)
 
 
+def filename_generator(path, type, seed, algorithm):
+    return f"{path}{type}-{algorithm}-seed{seed}.png"
+
+
 @click.command()
 @click.option('--seed', default=1, help='Random seed.', type=int)
-@click.option('--evaluation-episodes', default=1000, help='Episodes over which to evaluate after training.', type=int)
-@click.option('--episodes', default=5000, help='Number of epsiodes.', type=int)
-@click.option('--batch-size', default=128, help='Minibatch size.', type=int)
-@click.option('--gamma', default=0.9, help='Discount factor.', type=float)
+@click.option('--evaluation-episodes', default=0, help='Episodes over which to evaluate after training.', type=int)
+@click.option('--episodes', default=2000, help='Number of epsiodes.', type=int)
+@click.option('--batch-size', default=32, help='Minibatch size.', type=int)
+@click.option('--gamma', default=0.95, help='Discount factor.', type=float)
 @click.option('--inverting-gradients', default=True,
               help='Use inverting gradients scheme instead of squashing function.', type=bool)
-@click.option('--initial-memory-threshold', default=500, help='Number of transitions required to start learning.',
+@click.option('--initial-memory-threshold', default=2000, help='Number of transitions required to start learning.',
               type=int)  # may have been running with 500????????
 @click.option('--use-ornstein-noise', default=True,
               help='Use Ornstein noise instead of epsilon-greedy with uniform random exploration.', type=bool)
-@click.option('--replay-memory-size', default=10000, help='Replay memory size in transitions.', type=int)
+@click.option('--replay-memory-size', default=100000, help='Replay memory size in transitions.', type=int)
 @click.option('--epsilon-steps', default=1000, help='Number of episodes over which to linearly anneal epsilon.', type=int)
-@click.option('--epsilon-final', default=0.01, help='Final epsilon value.', type=float)
-@click.option('--tau-actor', default=0.1, help='Soft target network update averaging factor.', type=float)
+@click.option('--epsilon-final', default=0.1, help='Final epsilon value.', type=float)
+@click.option('--tau-actor', default=0.001, help='Soft target network update averaging factor.', type=float)
 @click.option('--tau-actor-param', default=0.001, help='Soft target network update averaging factor.', type=float)  # 0.001
 @click.option('--learning-rate-actor', default=0.001, help="Actor network learning rate.", type=float) # 0.001/0.0001 learns faster but tableaus faster too
-@click.option('--learning-rate-actor-param', default=0.0001, help="Critic network learning rate.", type=float)  # 0.00001
+@click.option('--learning-rate-actor-param', default=0.00001, help="Critic network learning rate.", type=float)  # 0.00001
 @click.option('--scale-actions', default=True, help="Scale actions.", type=bool)
 @click.option('--initialise-params', default=True, help='Initialise action parameters.', type=bool)
-@click.option('--clip-grad', default=10., help="Parameter gradient clipping limit.", type=float)
+@click.option('--clip-grad', default=1., help="Parameter gradient clipping limit.", type=float) #
 @click.option('--split', default=False, help='Separate action-parameter inputs.', type=bool)
 @click.option('--multipass', default=True, help='Separate action-parameter inputs using multiple Q-network passes.', type=bool)
 @click.option('--indexed', default=False, help='Indexed loss function.', type=bool)
@@ -69,20 +73,21 @@ def evaluate(env, agent, episodes=1000):
 @click.option('--random-weighted', default=False, help='Randomly weighted loss function.', type=bool)
 @click.option('--zero-index-gradients', default=False, help="Whether to zero all gradients for action-parameters not corresponding to the chosen action.", type=bool)
 @click.option('--action-input-layer', default=0, help='Which layer to input action parameters.', type=int)
-@click.option('--layers', default='[128,]', help='Duplicate action-parameter inputs.', cls=ClickPythonLiteralOption)
+@click.option('--layers', default='[128, 64]', help='Duplicate action-parameter inputs.', cls=ClickPythonLiteralOption)
 @click.option('--save-freq', default=0, help='How often to save models (0 = never).', type=int)
 @click.option('--save-dir', default="results/exp", help='Output directory.', type=str)
 @click.option('--render-freq', default=100, help='How often to render / save frames of an episode.', type=int)
 @click.option('--save-frames', default=False, help="Save render frames from the environment. Incompatible with visualise.", type=bool)
 @click.option('--visualise', default=False, help="Render game states. Incompatible with save-frames.", type=bool)
-@click.option('--title', default="PDDQN", help="Prefix of output files", type=str)
+@click.option('--title', default="PDQN", help="Prefix of output files", type=str)
 @click.option('--window',default=10, help='Window of reward')
 def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradients, initial_memory_threshold,
         replay_memory_size, epsilon_steps, tau_actor, tau_actor_param, use_ornstein_noise, learning_rate_actor,
         learning_rate_actor_param, epsilon_final, zero_index_gradients, initialise_params, scale_actions,
         clip_grad, split, indexed, layers, multipass, weighted, average, random_weighted, render_freq,
         save_freq, save_dir, save_frames, visualise, action_input_layer, title, window):
-
+    pic_name = filename_generator("./results/imgs/", "capacity60", seed, title)
+    print(pic_name)
     if save_freq > 0 and save_dir:
         save_dir = os.path.join(save_dir, title + "{}".format(str(seed)))
         os.makedirs(save_dir, exist_ok=True)
@@ -149,7 +154,7 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
                                            'output_layer_init_std': 0.0001,},
                        zero_index_gradients=zero_index_gradients,
                        seed=seed,
-                       spot_bound=0)
+                       spot_bound=-0.7895)
 
     if initialise_params:
         initial_weights = np.zeros((env.action_space.spaces[0].n, env.observation_space.spaces[0].shape[0]))
@@ -166,6 +171,7 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
     # agent.epsilon_final = 0.
     # agent.epsilon = 0.
     # agent.noise = None
+    best = float("inf")
 
     for i in range(episodes):
         if save_freq > 0 and save_dir and i % save_freq == 0:
@@ -202,11 +208,14 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
         returns.append(episode_reward)
         total_reward += episode_reward
         print('Episode{0:5s} R:{1:.4f} Avg:{2:.4f} r10:{3:.4f}'.format(str(i), episode_reward, total_reward / (i + 1), np.array(returns[-window:]).mean()))
-        if i % 10 == 0 and i is not 0:
-            plot_reward(returns, './results/imgs/exp.png')
+        if episode_reward < best:
+            best = episode_reward
+        if i % window == 0 and i is not 0:
+            plot_window_reward(returns, filename=pic_name, window=window)
     end_time = time.time()
     print("Took %.2f seconds" % (end_time - start_time))
-    env.close()
+    print(best)
+    # env.close()
     if save_freq > 0 and save_dir:
         agent.save_models(os.path.join(save_dir, str(i)))
 
@@ -216,14 +225,14 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
 
     np.save(os.path.join(dir, title + "{}".format(str(seed))),returns)
 
-    if evaluation_episodes > 0:
-        print("Evaluating agent over {} episodes".format(evaluation_episodes))
-        agent.epsilon_final = 0.
-        agent.epsilon = 0.
-        agent.noise = None
-        evaluation_returns = evaluate(env, agent, evaluation_episodes)
-        print("Ave. evaluation return =", sum(evaluation_returns) / len(evaluation_returns))
-        np.save(os.path.join(dir, title + "{}e".format(str(seed))), evaluation_returns)
+    # if evaluation_episodes > 0:
+    #     print("Evaluating agent over {} episodes".format(evaluation_episodes))
+    #     agent.epsilon_final = 0.
+    #     agent.epsilon = 0.
+    #     agent.noise = None
+    #     evaluation_returns = evaluate(env, agent, evaluation_episodes)
+    #     print("Ave. evaluation return =", sum(evaluation_returns) / len(evaluation_returns))
+    #     np.save(os.path.join(dir, title + "{}e".format(str(seed))), evaluation_returns)
 
 
 if __name__ == '__main__':
