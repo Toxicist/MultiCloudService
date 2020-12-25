@@ -17,18 +17,19 @@ from gym.utils import seeding
 class Constants:
     # 边缘节点参数设置
     EDGE_BASIC_COST = 0.03
+    EDGE_WORK_COST = 0.2065
     EDGE_COEFFICIENT = 1
     TOTAL_TASK_NUM = 100 #
 
-    EDGE_CAPACITY = 50
+    EDGE_CAPACITY = 60
 
     # 用户任务参数设置
-    TASK_SIZE_MEAN = 10 #
+    TASK_SIZE_MEAN = 5 #
     TASK_SIZE_STD = 5
     MIN_TASK_SIZE = 1
     MAX_TASK_SIZE = TASK_SIZE_MEAN + 3 * TASK_SIZE_STD
 
-    TASK_LENGTH_MEAN = 10  #
+    TASK_LENGTH_MEAN = 5  #
     TASK_LENGTH_STD = 5
     MIN_TASK_LENGTH = 1
     MAX_TASK_LENGTH = TASK_LENGTH_MEAN + 3 * TASK_LENGTH_STD
@@ -36,25 +37,24 @@ class Constants:
     # 云服务价格及类型参数设置
 
     # On Demand Instance Pricing
-    SERVICE_OD1_PRICE = 0.105
+    SERVICE_OD1_PRICE = 0.5
 
     # Spot Instance Pricing
-    SERVICE_SI1_PRICE_MEAN = 0.08
-    SERVICE_SI1_PRICE_STD = 0.02
-    MIN_SERVICE_SI1_PRICE = 0.02
+    SERVICE_SI1_PRICE_MEAN = 0.25
+    SERVICE_SI1_PRICE_STD = 0.1
+    MIN_SERVICE_SI1_PRICE = 0.05
     MAX_SERVICE_SI1_PRICE = SERVICE_SI1_PRICE_MEAN + 3 * SERVICE_SI1_PRICE_STD
 
     # Reserved Instance Pricing
-    SERVICE_RE1_UPFRONT = 326.0
-    SERVICE_RE1_PERIOD = 200 #
-    SERIVCE_RE1_PRICE = 0.025
+    SERVICE_RE1_UPFRONT = 100
+    SERVICE_RE1_PERIOD = 20 #
+    SERIVCE_RE1_PRICE = 0.147
 
-    SHOW_STEP = False
+    SHOW_STEP = True
 
     # 设置缩放向量
     SCALE_VECTOR = np.array([EDGE_CAPACITY, EDGE_CAPACITY, MAX_TASK_SIZE, MAX_TASK_LENGTH, MAX_SERVICE_SI1_PRICE, 1])
 
-    EXCHANGE_RATE = 6.5556
 
 class MCSEnv(gym.Env):
     metadata = {'render.modes': ['human']}
@@ -117,6 +117,8 @@ class MCSEnv(gym.Env):
         self.remain_capacity = self.edge_capacity
         self.released_vm = 0
 
+        self.cap_record = []
+        self.best = float("inf")
     def reset(self):
         np.random.seed(self.seed)
         self.task_counter = 0
@@ -191,9 +193,10 @@ class MCSEnv(gym.Env):
 
         # 计算边缘节点的工作负载及其工作成本
         remain_capacity = remain_capacity - edge_vm
-        edge_workload = 1 - remain_capacity / self.edge_capacity
-        edge_cost_coefficient = Constants.EDGE_COEFFICIENT * (1 + edge_workload) * Constants.EDGE_BASIC_COST
-        edge_cost = np.round(edge_cost_coefficient * (self.edge_capacity - remain_capacity), 4) # 边缘节点的成本计算
+        # edge_workload = 1 - remain_capacity / self.edge_capacity
+        # edge_cost_coefficient = Constants.EDGE_COEFFICIENT * (1 + edge_workload) * Constants.EDGE_BASIC_COST
+        # edge_cost = np.round(edge_cost_coefficient * (self.edge_capacity - remain_capacity), 4) # 边缘节点的成本计算\
+        edge_cost = np.round(remain_capacity * Constants.EDGE_BASIC_COST + (self.edge_capacity - remain_capacity) * Constants.EDGE_WORK_COST, 4)
 
         # 计算系统的总成本
         cost = edge_cost + cloud_cost
@@ -203,6 +206,7 @@ class MCSEnv(gym.Env):
         self.released_vm = self.update_record()
         remain_capacity += self.released_vm
         self.remain_capacity = remain_capacity
+
 
         if self.service_re1_is_available:
             self.service_re1_remain_time -= 1
@@ -219,6 +223,9 @@ class MCSEnv(gym.Env):
             print(f"STEP: {self.task_counter}, TYPE: {act_index}, PARAM: {act_param}, CAP: {self.remain_capacity}, Released: {self.released_vm}, Edge Cost: {edge_cost} Cloud Cost: {cloud_cost}, Req: {task_size, task_length}")
 
         info = {}
+        # 记录剩余资源情况
+        self.cap_record.append(self.remain_capacity)
+
 
         return next_state, -cost/100, self.done, info
 
@@ -281,6 +288,9 @@ class MCSEnv(gym.Env):
         state = self.state.copy()
         scaled_state = self._scale_state(state)
         return scaled_state
+
+    def write_txt(self):
+        pass
 
 
 if __name__ == '__main__':
