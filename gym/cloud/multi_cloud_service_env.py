@@ -11,7 +11,8 @@ from gym.utils import seeding
     2. task size
     3. task length
     4. current spot instance service price
-    5. reserve state 0 / 1 
+    5. reserved instance number
+    6. reserved instance remain time
 '''
 
 class Constants:
