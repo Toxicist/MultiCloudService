@@ -11,8 +11,7 @@ from gym.utils import seeding
     2. task size
     3. task length
     4. current spot instance service price
-    5. reserved instance number
-    6. reserved instance remain time
+    5. reserved remain time
 '''
 
 class Constants:
@@ -22,15 +21,15 @@ class Constants:
     EDGE_COEFFICIENT = 1
     TOTAL_TASK_NUM = 100 #
 
-    EDGE_CAPACITY = 60
+    EDGE_CAPACITY = 100
 
     # 用户任务参数设置
-    TASK_SIZE_MEAN = 5 #
+    TASK_SIZE_MEAN = 10 #
     TASK_SIZE_STD = 5
     MIN_TASK_SIZE = 1
     MAX_TASK_SIZE = TASK_SIZE_MEAN + 3 * TASK_SIZE_STD
 
-    TASK_LENGTH_MEAN = 5  #
+    TASK_LENGTH_MEAN = 10  #
     TASK_LENGTH_STD = 5
     MIN_TASK_LENGTH = 1
     MAX_TASK_LENGTH = TASK_LENGTH_MEAN + 3 * TASK_LENGTH_STD
@@ -38,23 +37,23 @@ class Constants:
     # 云服务价格及类型参数设置
 
     # On Demand Instance Pricing
-    SERVICE_OD1_PRICE = 0.5
+    SERVICE_OD1_PRICE = 3.0
 
     # Spot Instance Pricing
-    SERVICE_SI1_PRICE_MEAN = 0.25
-    SERVICE_SI1_PRICE_STD = 0.1
-    MIN_SERVICE_SI1_PRICE = 0.05
+    SERVICE_SI1_PRICE_MEAN = 1.5
+    SERVICE_SI1_PRICE_STD = 1.0
+    MIN_SERVICE_SI1_PRICE = 1.0
     MAX_SERVICE_SI1_PRICE = SERVICE_SI1_PRICE_MEAN + 3 * SERVICE_SI1_PRICE_STD
 
     # Reserved Instance Pricing
-    SERVICE_RE1_UPFRONT = 100
+    SERVICE_RE1_UPFRONT = 800
     SERVICE_RE1_PERIOD = 20 #
-    SERIVCE_RE1_PRICE = 0.147
+    SERIVCE_RE1_PRICE = 1.5
 
-    SHOW_STEP = True
+    SHOW_STEP = False
 
     # 设置缩放向量
-    SCALE_VECTOR = np.array([EDGE_CAPACITY, EDGE_CAPACITY, MAX_TASK_SIZE, MAX_TASK_LENGTH, MAX_SERVICE_SI1_PRICE, 1])
+    SCALE_VECTOR = np.array([EDGE_CAPACITY, EDGE_CAPACITY, MAX_TASK_SIZE, MAX_TASK_LENGTH, MAX_SERVICE_SI1_PRICE, SERVICE_RE1_PERIOD])
 
 
 class MCSEnv(gym.Env):
@@ -85,6 +84,8 @@ class MCSEnv(gym.Env):
         self.state = []
 
         self.usage_record = []  # 边缘节点的使用记录
+        self.spot_usage_record = [] # spot instance 使用记录
+        self.reserved_usage_record = [] # reserved 使用记录
 
         self.service_od1_price = service_od1_price
 
@@ -119,7 +120,6 @@ class MCSEnv(gym.Env):
         self.released_vm = 0
 
         self.cap_record = []
-        self.best = float("inf")
     def reset(self):
         np.random.seed(self.seed)
         self.task_counter = 0
@@ -130,7 +130,10 @@ class MCSEnv(gym.Env):
         self.service_re1_remain_time = 0
 
         self.remain_capacity = self.edge_capacity
-        self.usage_record = []
+
+        self.usage_record = []  # 边缘节点的使用记录
+        self.spot_usage_record = []  # spot instance 使用记录
+        self.reserved_usage_record = []  # reserved 使用记录
 
         self.done = False
 
@@ -172,26 +175,41 @@ class MCSEnv(gym.Env):
             cloud_vm = task_size - remain_capacity
             edge_vm = remain_capacity
 
+        on_demand_cost = 0
+        reserved_cost = 0
+        spot_cost = 0
+
         # 选择租赁 on demand类型云服务器
         if act_index == 0:
             # 计算需要的成本
-            cloud_cost = self.service_od1_price * cloud_vm * task_length  # 云服务器最终成本
+            on_demand_cost = self.service_od1_price * cloud_vm * task_length  # 云服务器最终成本
 
         # 选择租赁 reserves类型云服务器
         elif act_index == 1:
             # 检测服务是否可用
             if not self.service_re1_is_available:
-                cloud_cost = self.service_re1_upfront
+                reserved_cost += self.service_re1_upfront
                 self.service_re1_remain_time = self.service_re1_period
                 self.service_re1_is_available = True
-
-            # 计算需要的成本
-            cloud_cost += self.service_re1_price * cloud_vm * task_length
+            self.reserved_usage_record.append([cloud_vm, task_length])
 
         # 选择租赁 spot instance 类型云服务器
         elif act_index == 2:
-            cloud_cost = spot_price * cloud_vm * task_length
+            self.spot_usage_record.append([cloud_vm, task_length])
 
+        total_reserved_vm = 0
+        for req in self.reserved_usage_record:
+            total_reserved_vm += req[0]
+
+        reserved_cost += Constants.SERIVCE_RE1_PRICE * total_reserved_vm
+
+        total_spot_instance = 0
+        for req in self.spot_usage_record:
+            total_spot_instance += req[0]
+        spot_cost = spot_price * total_spot_instance
+
+
+        cloud_cost = on_demand_cost + reserved_cost + spot_cost
         # 计算边缘节点的工作负载及其工作成本
         remain_capacity = remain_capacity - edge_vm
         # edge_workload = 1 - remain_capacity / self.edge_capacity
@@ -205,6 +223,9 @@ class MCSEnv(gym.Env):
         # 更新系统状态
         self.usage_record.append([edge_vm, task_length])
         self.released_vm = self.update_record()
+        self.update_spot_record()
+        self.update_reserved_record()
+
         remain_capacity += self.released_vm
         self.remain_capacity = remain_capacity
 
@@ -228,7 +249,7 @@ class MCSEnv(gym.Env):
         self.cap_record.append(self.remain_capacity)
 
 
-        return next_state, -cost/100, self.done, info
+        return next_state, -cost/500, self.done, info
 
     def update_record(self):
         delete_index = []
@@ -241,7 +262,35 @@ class MCSEnv(gym.Env):
                 delete_index.append(i)
 
         records = [records[i] for i in range(len(records)) if (i not in delete_index)]
-        self.usage_record = records
+        self.usage_record = copy.deepcopy(records)
+        return released_vm
+
+    def update_reserved_record(self):
+        delete_index = []
+        released_vm = 0
+        records = copy.deepcopy(self.reserved_usage_record)
+        for i in range(len(records)):
+            records[i][1] = records[i][1] - 1
+            if records[i][1] == 0:
+                released_vm += records[i][0]
+                delete_index.append(i)
+
+        records = [records[i] for i in range(len(records)) if (i not in delete_index)]
+        self.reserved_usage_record = copy.deepcopy(records)
+        return released_vm
+
+    def update_spot_record(self):
+        delete_index = []
+        released_vm = 0
+        records = copy.deepcopy(self.spot_usage_record)
+        for i in range(len(records)):
+            records[i][1] = records[i][1] - 1
+            if records[i][1] == 0:
+                released_vm += records[i][0]
+                delete_index.append(i)
+
+        records = [records[i] for i in range(len(records)) if (i not in delete_index)]
+        self.spot_usage_record = copy.deepcopy(records)
         return released_vm
 
     def task_generator(self):
@@ -283,8 +332,7 @@ class MCSEnv(gym.Env):
             task_info = self.task_generator()
             cloud_price = self.cloud_service_price_generator()
 
-            self.state = [self.remain_capacity, self.released_vm, task_info[0], task_info[1], cloud_price,
-                          1 if self.service_re1_is_available else 0]
+            self.state = [self.remain_capacity, self.released_vm, task_info[0], task_info[1], cloud_price, self.service_re1_remain_time]
 
         state = self.state.copy()
         scaled_state = self._scale_state(state)
@@ -295,7 +343,7 @@ class MCSEnv(gym.Env):
 
 
 if __name__ == '__main__':
-    env = MCSEnv(seed=122)
+    env = MCSEnv(seed=1)
     done = False
     ep_r = 0
     ep_num = 0

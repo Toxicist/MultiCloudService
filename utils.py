@@ -43,4 +43,4 @@ def scale_param(old_low, old_high, new_low, new_high, param):
     return np.round(res, 4)
 
 if __name__ == '__main__':
-    print(scale_param(1, 20, -1, 1, 3))
+    print(scale_param(1, 25, -1, 1, 8))

@@ -2,7 +2,6 @@ import os
 import click
 import time
 import gym
-import gym_platform
 from gym.wrappers import Monitor
 from common import ClickPythonLiteralOption
 from common.platform_domain import PlatformFlattenedActionWrapper
@@ -46,8 +45,8 @@ def filename_generator(path, type, seed, algorithm):
 @click.command()
 @click.option('--seed', default=1, help='Random seed.', type=int)
 @click.option('--evaluation-episodes', default=0, help='Episodes over which to evaluate after training.', type=int)
-@click.option('--episodes', default=2000, help='Number of epsiodes.', type=int)
-@click.option('--batch-size', default=32, help='Minibatch size.', type=int)
+@click.option('--episodes', default=5000, help='Number of epsiodes.', type=int)
+@click.option('--batch-size', default=128, help='Minibatch size.', type=int) #32
 @click.option('--gamma', default=0.95, help='Discount factor.', type=float)
 @click.option('--inverting-gradients', default=True,
               help='Use inverting gradients scheme instead of squashing function.', type=bool)
@@ -59,9 +58,9 @@ def filename_generator(path, type, seed, algorithm):
 @click.option('--epsilon-steps', default=1000, help='Number of episodes over which to linearly anneal epsilon.', type=int)
 @click.option('--epsilon-final', default=0.1, help='Final epsilon value.', type=float)
 @click.option('--tau-actor', default=0.001, help='Soft target network update averaging factor.', type=float)
-@click.option('--tau-actor-param', default=0.001, help='Soft target network update averaging factor.', type=float)  # 0.001
-@click.option('--learning-rate-actor', default=0.001, help="Actor network learning rate.", type=float) # 0.001/0.0001 learns faster but tableaus faster too
-@click.option('--learning-rate-actor-param', default=0.00001, help="Critic network learning rate.", type=float)  # 0.00001
+@click.option('--tau-actor-param', default=0.001, help='Soft target network update averaging factor.', type=float)
+@click.option('--learning-rate-actor', default=0.0001, help="Actor network learning rate.", type=float)
+@click.option('--learning-rate-actor-param', default=0.00001, help="Critic network learning rate.", type=float)
 @click.option('--scale-actions', default=True, help="Scale actions.", type=bool)
 @click.option('--initialise-params', default=True, help='Initialise action parameters.', type=bool)
 @click.option('--clip-grad', default=1., help="Parameter gradient clipping limit.", type=float) #
@@ -73,7 +72,7 @@ def filename_generator(path, type, seed, algorithm):
 @click.option('--random-weighted', default=False, help='Randomly weighted loss function.', type=bool)
 @click.option('--zero-index-gradients', default=False, help="Whether to zero all gradients for action-parameters not corresponding to the chosen action.", type=bool)
 @click.option('--action-input-layer', default=0, help='Which layer to input action parameters.', type=int)
-@click.option('--layers', default='[128, 64]', help='Duplicate action-parameter inputs.', cls=ClickPythonLiteralOption)
+@click.option('--layers', default='[128, ]', help='Duplicate action-parameter inputs.', cls=ClickPythonLiteralOption) # 128,64
 @click.option('--save-freq', default=0, help='How often to save models (0 = never).', type=int)
 @click.option('--save-dir', default="results/exp", help='Output directory.', type=str)
 @click.option('--render-freq', default=100, help='How often to render / save frames of an episode.', type=int)
@@ -86,7 +85,7 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
         learning_rate_actor_param, epsilon_final, zero_index_gradients, initialise_params, scale_actions,
         clip_grad, split, indexed, layers, multipass, weighted, average, random_weighted, render_freq,
         save_freq, save_dir, save_frames, visualise, action_input_layer, title, window):
-    pic_name = filename_generator("./results/imgs/", "capacity60", seed, title)
+    pic_name = filename_generator("./results/imgs/", "capacity100-10-5", seed, title)
     print(pic_name)
     if save_freq > 0 and save_dir:
         save_dir = os.path.join(save_dir, title + "{}".format(str(seed)))
@@ -100,7 +99,9 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
         os.makedirs(vidir, exist_ok=True)
 
     env = gym.make('Cloud-v0')
+    # initial_params_ = [0.0, 0.0, 0.0]
     initial_params_ = [0.5, 0.5, 0.5]
+    # initial_params_ = [1.0, 1.0, 1.0]
     if scale_actions:
         for a in range(env.action_space.spaces[0].n):
             initial_params_[a] = 2. * (initial_params_[a] - env.action_space.spaces[1].spaces[a].low) / (
@@ -154,7 +155,7 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
                                            'output_layer_init_std': 0.0001,},
                        zero_index_gradients=zero_index_gradients,
                        seed=seed,
-                       spot_bound=-0.7895)
+                       spot_bound=-0.4167) # <=8
 
     if initialise_params:
         initial_weights = np.zeros((env.action_space.spaces[0].n, env.observation_space.spaces[0].shape[0]))
@@ -171,7 +172,7 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
     # agent.epsilon_final = 0.
     # agent.epsilon = 0.
     # agent.noise = None
-    best = float("inf")
+    best = -float("inf")
 
     for i in range(episodes):
         if save_freq > 0 and save_dir and i % save_freq == 0:
@@ -204,26 +205,30 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
                 break
         agent.end_episode()
 
-
         returns.append(episode_reward)
         total_reward += episode_reward
-        print('Episode{0:5s} R:{1:.4f} Avg:{2:.4f} r10:{3:.4f}'.format(str(i), episode_reward, total_reward / (i + 1), np.array(returns[-window:]).mean()))
-        if episode_reward < best:
+
+        if episode_reward > best:
             best = episode_reward
+            with open('results/res.txt', "w") as f:
+                f.write(str(best * 500.0))
+
+        print('Episode{0:5s} R:{1:.4f} Avg:{2:.4f} r10:{3:.4f}'.format(str(i), episode_reward, total_reward / (i + 1), np.array(returns[-window:]).mean()))
+
         if i % window == 0 and i is not 0:
             plot_window_reward(returns, filename=pic_name, window=window)
+            # plot_reward(returns, filename=pic_name)
     end_time = time.time()
     print("Took %.2f seconds" % (end_time - start_time))
-    print(best)
+    print(best * 500.0)
     # env.close()
     if save_freq > 0 and save_dir:
         agent.save_models(os.path.join(save_dir, str(i)))
 
-    returns = env.get_episode_rewards()
     print("Ave. return =", sum(returns) / len(returns))
     print("Ave. last 100 episode return =", sum(returns[-100:]) / 100.)
 
-    np.save(os.path.join(dir, title + "{}".format(str(seed))),returns)
+    # np.save(os.path.join(dir, title + "{}".format(str(seed))),returns)
 
     # if evaluation_episodes > 0:
     #     print("Evaluating agent over {} episodes".format(evaluation_episodes))
