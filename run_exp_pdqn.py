@@ -72,7 +72,7 @@ def filename_generator(path, type, seed, algorithm):
 @click.option('--random-weighted', default=False, help='Randomly weighted loss function.', type=bool)
 @click.option('--zero-index-gradients', default=False, help="Whether to zero all gradients for action-parameters not corresponding to the chosen action.", type=bool)
 @click.option('--action-input-layer', default=0, help='Which layer to input action parameters.', type=int)
-@click.option('--layers', default='[128, ]', help='Duplicate action-parameter inputs.', cls=ClickPythonLiteralOption) # 128,64
+@click.option('--layers', default='[128, 64]', help='Duplicate action-parameter inputs.', cls=ClickPythonLiteralOption) # 128,64
 @click.option('--save-freq', default=0, help='How often to save models (0 = never).', type=int)
 @click.option('--save-dir', default="results/exp", help='Output directory.', type=str)
 @click.option('--render-freq', default=100, help='How often to render / save frames of an episode.', type=int)
@@ -85,7 +85,7 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
         learning_rate_actor_param, epsilon_final, zero_index_gradients, initialise_params, scale_actions,
         clip_grad, split, indexed, layers, multipass, weighted, average, random_weighted, render_freq,
         save_freq, save_dir, save_frames, visualise, action_input_layer, title, window):
-    pic_name = filename_generator("./results/imgs/", "capacity100-10-5", seed, title)
+    pic_name = filename_generator("./results/imgs/", "capacity60-5-10", seed, title)
     print(pic_name)
     if save_freq > 0 and save_dir:
         save_dir = os.path.join(save_dir, title + "{}".format(str(seed)))
@@ -215,7 +215,7 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
 
         print('Episode{0:5s} R:{1:.4f} Avg:{2:.4f} r10:{3:.4f}'.format(str(i), episode_reward, total_reward / (i + 1), np.array(returns[-window:]).mean()))
 
-        if i % window == 0 and i is not 0:
+        if visualise and i % window == 0 and i is not 0:
             plot_window_reward(returns, filename=pic_name, window=window)
             # plot_reward(returns, filename=pic_name)
     end_time = time.time()

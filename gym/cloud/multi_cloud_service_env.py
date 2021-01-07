@@ -21,7 +21,7 @@ class Constants:
     EDGE_COEFFICIENT = 1
     TOTAL_TASK_NUM = 100 #
 
-    EDGE_CAPACITY = 100
+    EDGE_CAPACITY = 90
 
     # 用户任务参数设置
     TASK_SIZE_MEAN = 10 #
@@ -120,6 +120,12 @@ class MCSEnv(gym.Env):
         self.released_vm = 0
 
         self.cap_record = []
+
+        # 使用量统计
+        self.total_od = 0
+        self.total_reserved = 0
+        self.total_spot = 0
+
     def reset(self):
         np.random.seed(self.seed)
         self.task_counter = 0
@@ -142,114 +148,115 @@ class MCSEnv(gym.Env):
         return copy.deepcopy(state)
 
     def step(self, action):
-        """
-        :param action:
-        action = (act_index, [param1, param2])
-        两个部分 一部分是选择的动作的编号， act , 另外一部分是动作的参数列表，未选择的动作使用0填充
-        act_index 0 租赁云服务器0-on demand上的资源进行分配，参数值代表分配到云服务器0上的资源，剩余资源由边缘节点提供
-        act_index 1 租赁云服务器1-reserved类型上的资源进行分配，参数值代表分配到云服务器1上的资源，剩余资源由边缘节点提供
-        act_index 2 租赁云服务器2-spot-instance 类型上的资源进行分配，参数值代表分配到服务器2上的资源，剩余资源由边缘节点提供
-        :return: 执行后的状态，奖励值，停止信号等
-        """
+            """
+            :param action:
+            action = (act_index, [param1, param2])
+            两个部分 一部分是选择的动作的编号， act , 另外一部分是动作的参数列表，未选择的动作使用0填充
+            act_index 0 租赁云服务器0-on demand上的资源进行分配，参数值代表分配到云服务器0上的资源，剩余资源由边缘节点提供
+            act_index 1 租赁云服务器1-reserved类型上的资源进行分配，参数值代表分配到云服务器1上的资源，剩余资源由边缘节点提供
+            act_index 2 租赁云服务器2-spot-instance 类型上的资源进行分配，参数值代表分配到服务器2上的资源，剩余资源由边缘节点提供
+            :return: 执行后的状态，奖励值，停止信号等
+            """
 
-        cost = 0  # 成本
-        edge_cost, cloud_cost = 0, 0
+            cost = 0  # 成本
+            edge_cost, cloud_cost = 0, 0
 
-        act_index = action[0]  # 动作索引
-        act_param = action[1][act_index][0]  # 所选动作参数
-        act_param = np.clip(act_param, 0, 1) # 动作参数裁剪，避免加噪音
+            act_index = action[0]  # 动作索引
+            act_param = action[1][act_index][0]  # 所选动作参数
+            act_param = np.clip(act_param, 0, 1) # 动作参数裁剪，避免加噪音
 
-        # 获取服务器当前的状态
-        state = copy.deepcopy(self.state)
-        remain_capacity = state[0]
-        task_size = state[2]
-        task_length = state[3]
-        spot_price = state[4]
+            # 获取服务器当前的状态
+            state = copy.deepcopy(self.state)
+            remain_capacity = state[0]
+            task_size = state[2]
+            task_length = state[3]
+            spot_price = state[4]
 
-        # 根据动作计算需要租赁的云服务器和边缘节点VM数量
-        cloud_vm = int(np.floor(task_size * act_param))
-        edge_vm = task_size - cloud_vm
+            # 根据动作计算需要租赁的云服务器和边缘节点VM数量
+            cloud_vm = int(np.floor(task_size * act_param))
+            edge_vm = task_size - cloud_vm
 
-        # 边缘服务器承载能力不足， 将边缘服务器装满后，剩余的资源由云服务器提供
-        if edge_vm > remain_capacity:
-            cloud_vm = task_size - remain_capacity
-            edge_vm = remain_capacity
+            # 边缘服务器承载能力不足， 将边缘服务器装满后，剩余的资源由云服务器提供
+            if edge_vm > remain_capacity:
+                cloud_vm = task_size - remain_capacity
+                edge_vm = remain_capacity
 
-        on_demand_cost = 0
-        reserved_cost = 0
-        spot_cost = 0
+            on_demand_cost = 0
+            reserved_cost = 0
+            spot_cost = 0
 
-        # 选择租赁 on demand类型云服务器
-        if act_index == 0:
-            # 计算需要的成本
-            on_demand_cost = self.service_od1_price * cloud_vm * task_length  # 云服务器最终成本
+            # 选择租赁 on demand类型云服务器
+            if act_index == 0:
+                # 计算需要的成本
+                on_demand_cost = self.service_od1_price * cloud_vm * task_length  # 云服务器最终成本
+                self.total_od += cloud_vm
 
-        # 选择租赁 reserves类型云服务器
-        elif act_index == 1:
-            # 检测服务是否可用
-            if not self.service_re1_is_available:
-                reserved_cost += self.service_re1_upfront
-                self.service_re1_remain_time = self.service_re1_period
-                self.service_re1_is_available = True
-            self.reserved_usage_record.append([cloud_vm, task_length])
+            # 选择租赁 reserves类型云服务器
+            elif act_index == 1:
+                # 检测服务是否可用
+                if not self.service_re1_is_available:
+                    reserved_cost += self.service_re1_upfront
+                    self.service_re1_remain_time = self.service_re1_period
+                    self.service_re1_is_available = True
+                self.reserved_usage_record.append([cloud_vm, task_length])
 
-        # 选择租赁 spot instance 类型云服务器
-        elif act_index == 2:
-            self.spot_usage_record.append([cloud_vm, task_length])
+            # 选择租赁 spot instance 类型云服务器
+            elif act_index == 2:
+                self.spot_usage_record.append([cloud_vm, task_length])
+            # 计算本时间槽内reserved类型服务器的维护费用
+            total_reserved_vm = 0
+            for req in self.reserved_usage_record:
+                total_reserved_vm += req[0]
 
-        total_reserved_vm = 0
-        for req in self.reserved_usage_record:
-            total_reserved_vm += req[0]
+            reserved_cost += Constants.SERIVCE_RE1_PRICE * total_reserved_vm
+            # 计算本时间槽内spot instance 类型服务器的租赁费用
+            total_spot_instance = 0
+            for req in self.spot_usage_record:
+                total_spot_instance += req[0]
+            spot_cost = spot_price * total_spot_instance
 
-        reserved_cost += Constants.SERIVCE_RE1_PRICE * total_reserved_vm
+            # 计算本时间槽内的总费用
+            cloud_cost = on_demand_cost + reserved_cost + spot_cost
+            # 计算边缘节点的工作负载及其工作成本
+            remain_capacity = remain_capacity - edge_vm
+            # edge_workload = 1 - remain_capacity / self.edge_capacity
+            # edge_cost_coefficient = Constants.EDGE_COEFFICIENT * (1 + edge_workload) * Constants.EDGE_BASIC_COST
+            # edge_cost = np.round(edge_cost_coefficient * (self.edge_capacity - remain_capacity), 4) # 边缘节点的成本计算\
+            edge_cost = np.round(remain_capacity * Constants.EDGE_BASIC_COST + (self.edge_capacity - remain_capacity) * Constants.EDGE_WORK_COST, 4)
 
-        total_spot_instance = 0
-        for req in self.spot_usage_record:
-            total_spot_instance += req[0]
-        spot_cost = spot_price * total_spot_instance
+            # 计算系统的总成本
+            cost = edge_cost + cloud_cost
 
+            # 更新系统状态
+            self.usage_record.append([edge_vm, task_length])
+            self.released_vm = self.update_record()
+            self.update_spot_record()
+            self.update_reserved_record()
 
-        cloud_cost = on_demand_cost + reserved_cost + spot_cost
-        # 计算边缘节点的工作负载及其工作成本
-        remain_capacity = remain_capacity - edge_vm
-        # edge_workload = 1 - remain_capacity / self.edge_capacity
-        # edge_cost_coefficient = Constants.EDGE_COEFFICIENT * (1 + edge_workload) * Constants.EDGE_BASIC_COST
-        # edge_cost = np.round(edge_cost_coefficient * (self.edge_capacity - remain_capacity), 4) # 边缘节点的成本计算\
-        edge_cost = np.round(remain_capacity * Constants.EDGE_BASIC_COST + (self.edge_capacity - remain_capacity) * Constants.EDGE_WORK_COST, 4)
-
-        # 计算系统的总成本
-        cost = edge_cost + cloud_cost
-
-        # 更新系统状态
-        self.usage_record.append([edge_vm, task_length])
-        self.released_vm = self.update_record()
-        self.update_spot_record()
-        self.update_reserved_record()
-
-        remain_capacity += self.released_vm
-        self.remain_capacity = remain_capacity
-
-
-        if self.service_re1_is_available:
-            self.service_re1_remain_time -= 1
-
-        if self.service_re1_remain_time == 0:
-            self.service_re1_is_available = False
-
-        self.task_counter += 1
-
-        next_state = self.get_state().copy()
-
-        # Show selected action
-        if Constants.SHOW_STEP:
-            print(f"STEP: {self.task_counter}, TYPE: {act_index}, PARAM: {act_param}, CAP: {self.remain_capacity}, Released: {self.released_vm}, Edge Cost: {edge_cost} Cloud Cost: {cloud_cost}, Req: {task_size, task_length}")
-
-        info = {}
-        # 记录剩余资源情况
-        self.cap_record.append(self.remain_capacity)
+            remain_capacity += self.released_vm
+            self.remain_capacity = remain_capacity
 
 
-        return next_state, -cost/500, self.done, info
+            if self.service_re1_is_available:
+                self.service_re1_remain_time -= 1
+
+            if self.service_re1_remain_time == 0:
+                self.service_re1_is_available = False
+
+            self.task_counter += 1
+
+            next_state = self.get_state().copy()
+
+            # Show selected action
+            if Constants.SHOW_STEP:
+                print(f"STEP: {self.task_counter}, TYPE: {act_index}, PARAM: {act_param}, CAP: {self.remain_capacity}, Released: {self.released_vm}, Edge Cost: {edge_cost} Cloud Cost: {cloud_cost}, Req: {task_size, task_length}")
+
+            info = {}
+            # 记录剩余资源情况
+            self.cap_record.append(self.remain_capacity)
+
+
+            return next_state, -cost/500, self.done, info
 
     def update_record(self):
         delete_index = []
