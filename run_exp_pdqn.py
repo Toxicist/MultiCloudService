@@ -45,7 +45,7 @@ def filename_generator(path, type, seed, algorithm):
 @click.command()
 @click.option('--seed', default=1, help='Random seed.', type=int)
 @click.option('--evaluation-episodes', default=0, help='Episodes over which to evaluate after training.', type=int)
-@click.option('--episodes', default=5000, help='Number of epsiodes.', type=int)
+@click.option('--episodes', default=200, help='Number of epsiodes.', type=int)
 @click.option('--batch-size', default=128, help='Minibatch size.', type=int) #32
 @click.option('--gamma', default=0.95, help='Discount factor.', type=float)
 @click.option('--inverting-gradients', default=True,

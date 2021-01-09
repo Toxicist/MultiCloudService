@@ -42,5 +42,13 @@ def scale_param(old_low, old_high, new_low, new_high, param):
     res = (new_high - new_low) * (param - old_low) / (old_high - old_low) + new_low
     return np.round(res, 4)
 
+def analyse_data(path):
+    with open(path, "r") as f:
+        lines = f.readlines()
+        for line in lines:
+            data = line.rstrip().split(" ")
+            print(data)
+
 if __name__ == '__main__':
-    print(scale_param(1, 25, -1, 1, 8))
+    # print(scale_param(1, 25, -1, 1, 8))
+    analyse_data("data1.txt")
