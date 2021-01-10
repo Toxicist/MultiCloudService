@@ -4,6 +4,7 @@ import gym
 import os
 from gym import error, spaces, utils
 from gym.utils import seeding
+
 '''
     STATE:
     0. remain capacity in edge
@@ -21,7 +22,7 @@ class Constants:
     EDGE_COEFFICIENT = 1
     TOTAL_TASK_NUM = 100 #
 
-    EDGE_CAPACITY = 90
+    EDGE_CAPACITY = 60
 
     # 用户任务参数设置
     TASK_SIZE_MEAN = 10 #
@@ -171,7 +172,8 @@ class MCSEnv(gym.Env):
             task_size = state[2]
             task_length = state[3]
             spot_price = state[4]
-
+            with open("data.txt", "a+") as f:
+                f.write(f"{self.task_counter} {task_size} {task_length} {spot_price}\n")
             # 根据动作计算需要租赁的云服务器和边缘节点VM数量
             cloud_vm = int(np.floor(task_size * act_param))
             edge_vm = task_size - cloud_vm
@@ -349,7 +351,11 @@ class MCSEnv(gym.Env):
         pass
 
 
+
+
+
 if __name__ == '__main__':
+
     env = MCSEnv(seed=1)
     done = False
     ep_r = 0
